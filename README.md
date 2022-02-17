@@ -3,8 +3,7 @@
 A simple bandwidth test for cpu and opencl in linux
 
 # build
-mkdir build
-cd build && cmake .. && make -j8
+mkdir build && cd build && cmake .. && make -j8
 
 # run
 ## run with cpu
