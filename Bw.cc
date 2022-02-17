@@ -35,6 +35,13 @@ static void TestCpu();
 static void TestGpu();
 
 int main(int argc, char *argv[]) {
+    if (argc < 2) {
+        std::cout << "usage:" << argv[0] << " type, eg: " << std::endl;
+        std::cout << "--" << argv[0] << " cpu " << std::endl;
+        std::cout << "--" << argv[0] << " gpu " << std::endl;
+        exit(-22);
+    }
+
     if (std::string("cpu") == argv[1]) {
         TestCpu();
     } else {

@@ -12,11 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <CL/opencl.h>
-#include <dlfcn.h>
+#ifdef WIN32
+  #include <Windows.h>
+  #include <libloaderapi.h>
+#else
+  #include <dlfcn.h>
+#endif
+
 #include <string>
 #include <vector>
 #include <iostream>
+#include <CL/opencl.h>
 
 /**
  * Wrapper of OpenCL 2.0, based on file opencl20/CL/cl.h
@@ -40,7 +46,7 @@ class OpenCLLibrary final {
   MACE_DISABLE_COPY_AND_ASSIGN(OpenCLLibrary);
 
   bool Load();
-  void *LoadFromPath(const std::string &path);
+  void LoadFromPath(const std::string &path);
 
  public:
   static OpenCLLibrary *Get();
@@ -280,7 +286,11 @@ class OpenCLLibrary final {
 #undef MACE_CL_DEFINE_FUNC_PTR
 
  private:
+#if defined(WIN32)
+  HMODULE handle_ = nullptr;
+#else
   void *handle_ = nullptr;
+#endif
 };
 
 OpenCLLibrary *OpenCLLibrary::Get() {
@@ -355,9 +365,8 @@ bool OpenCLLibrary::Load() {
 
   for (const auto &path : paths) {
     std::cerr << "Loading OpenCL from " << path << std::endl;
-    void *handle = LoadFromPath(path);
-    if (handle != nullptr) {
-      handle_ = handle;
+    LoadFromPath(path);
+    if (handle_ != nullptr) {
       break;
     }
   }
@@ -372,18 +381,37 @@ bool OpenCLLibrary::Load() {
   return true;
 }
 
-void *OpenCLLibrary::LoadFromPath(const std::string &path) {
-  void *handle = dlopen(path.c_str(), RTLD_LAZY | RTLD_LOCAL);
-
-  if (handle == nullptr) {
-    std::cerr << "Failed to load OpenCL library from path " << path
-            << " error code: " << dlerror() << std::endl;
-    return nullptr;
+void OpenCLLibrary::LoadFromPath(const std::string &path) {
+#if defined(WIN32)
+  handle_ = LoadLibraryA(path.c_str());
+  if (handle_ == nullptr) {
+    std::cerr << "Failed to load OpenCL library from path " << path << std::endl;
+    return;
   }
 
-#define MACE_CL_ASSIGN_FROM_DLSYM(func)                          \
+  #define MACE_CL_ASSIGN_FROM_DLSYM(func)                                  \
+    do {                                                                 \
+        auto ptr = GetProcAddress(handle_, #func);                       \
+        if (ptr == nullptr) {                                            \
+          std::cerr << "Failed to load " << #func << " from "        \
+            << path << std::endl;                                    \
+            continue;                                                    \
+        }                                                                \
+        func = reinterpret_cast<func##Func>(ptr);                        \
+        /*std::cout << "Loaded " << #func << " from " << path << std::endl;*/ \
+    } while (false);
+
+#else
+  handle_ = dlopen(path.c_str(), RTLD_LAZY | RTLD_LOCAL);
+  if (handle_ == nullptr) {
+    std::cerr << "Failed to load OpenCL library from path " << path
+            << " error code: " << dlerror() << std::endl;
+    return;
+  }
+
+  #define MACE_CL_ASSIGN_FROM_DLSYM(func)                        \
   do {                                                           \
-    void *ptr = dlsym(handle, #func);                            \
+    void *ptr = dlsym(handle_, #func);                            \
     if (ptr == nullptr) {                                        \
       std::cerr << "Failed to load " << #func << " from "        \
         << path << std::endl;                                    \
@@ -392,6 +420,7 @@ void *OpenCLLibrary::LoadFromPath(const std::string &path) {
     func = reinterpret_cast<func##Func>(ptr);                    \
     /*std::cout << "Loaded " << #func << " from " << path << std::endl;*/ \
   } while (false)
+#endif
 
   MACE_CL_ASSIGN_FROM_DLSYM(clGetPlatformIDs);
   MACE_CL_ASSIGN_FROM_DLSYM(clGetPlatformInfo);
@@ -444,8 +473,6 @@ void *OpenCLLibrary::LoadFromPath(const std::string &path) {
   MACE_CL_ASSIGN_FROM_DLSYM(clGetExtensionFunctionAddressForPlatform);
 
 #undef MACE_CL_ASSIGN_FROM_DLSYM
-
-  return handle;
 }
 
 }  // namespace runtime
@@ -891,10 +918,7 @@ CL_API_ENTRY cl_command_queue clCreateCommandQueueWithProperties(
     std::cout << "Fallback to clCreateCommandQueue" << std::endl;
     if (properties[0] == CL_QUEUE_PROPERTIES) {
       // When calling with OpenCL-CLHPP, the 2nd param is provided by caller.
-#pragma GCC diagnostic push  // disable warning both for clang and gcc
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
       return clCreateCommandQueue(context, device, properties[1], errcode_ret);
-#pragma GCC diagnostic pop
     } else {
       std::cerr << "Unknown calling parameters, check the code here\n";
       if (errcode_ret != nullptr) *errcode_ret = CL_INVALID_PLATFORM;

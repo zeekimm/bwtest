@@ -10,8 +10,16 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 add_definitions(-DCL_TARGET_OPENCL_VERSION=300)
 add_definitions(-DCL_HPP_TARGET_OPENCL_VERSION=300)
+add_definitions(-DCL_USE_DEPRECATED_OPENCL_1_0_APIS)
+add_definitions(-DCL_USE_DEPRECATED_OPENCL_1_1_APIS)
+add_definitions(-DCL_USE_DEPRECATED_OPENCL_1_2_APIS)
+add_definitions(-DCL_USE_DEPRECATED_OPENCL_2_0_APIS)
+add_definitions(-DCL_USE_DEPRECATED_OPENCL_2_1_APIS)
+add_definitions(-DCL_USE_DEPRECATED_OPENCL_2_2_APIS)
 
 add_executable(bw Bw.cc OpenclRuntime.cc)
 target_include_directories(bw PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(bw PRIVATE dl)
+if (NOT WIN32)
+    target_link_libraries(bw PRIVATE dl)
+endif()
 
